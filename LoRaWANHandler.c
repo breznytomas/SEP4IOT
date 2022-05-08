@@ -4,6 +4,8 @@
 * Created: 12/04/2019 10:09:05
 *  Author: IHA
 */
+#include <mh_z19.h>
+#include <hih8120.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -13,12 +15,18 @@
 #include <status_leds.h>
 
 // Parameters for OTAA join - You have got these in a mail from IHA
-#define LORA_appEUI "XXXXXXXXXXXXXXX"
-#define LORA_appKEY "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+// Parameters for OTAA join
+#define LORA_appEUI "2BBE8F09765BBF4B"
+#define LORA_appKEY "5F83717BC67B4646E3F00DC5EC3417DC"
 
 void lora_handler_task( void *pvParameters );
 
 static lora_driver_payload_t _uplink_payload;
+
+void myCo2CallBack(uint16_t ppm)
+{
+	return ppm;
+}
 
 void lora_handler_initialise(UBaseType_t lora_handler_task_priority)
 {
@@ -29,6 +37,14 @@ void lora_handler_initialise(UBaseType_t lora_handler_task_priority)
 	,  NULL
 	,  lora_handler_task_priority  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
 	,  NULL );
+	// The parameter is the USART port the MH-Z19 sensor is connected to - in this case USART3
+	mh_z19_initialise(ser_USART3);
+	mh_z19_injectCallBack(myCo2CallBack);
+	if ( HIH8120_OK == hih8120_initialise() )
+	{
+		// Driver initialised OK
+		// Always check what hih8120_initialise() returns
+	}
 }
 
 static void _lora_setup(void)
@@ -114,34 +130,65 @@ void lora_handler_task( void *pvParameters )
 	// Give it a chance to wakeup
 	vTaskDelay(150);
 
-	lora_driver_flushBuffers(); // get rid of first version string from module after reset!
+	lora_driver_flushBuffers(); // ge t rid of first version string from module after reset!
 
 	_lora_setup();
 
-	_uplink_payload.len = 6;
+	_uplink_payload.len = 4;
 	_uplink_payload.portNo = 2;
+	
+
 
 	TickType_t xLastWakeTime;
 	const TickType_t xFrequency = pdMS_TO_TICKS(300000UL); // Upload message every 5 minutes (300000 ms)
 	xLastWakeTime = xTaskGetTickCount();
+	if ( HIH8120_OK != hih8120_wakeup() )
+	{
+		// Something went wrong
+		// Investigate the return code further
+	}
+	if ( HIH8120_OK !=  hih8120_measure() )
+	{
+		// Something went wrong
+		// Investigate the return code further
+	}
 	
+	
+			xTaskDelayUntil( &xLastWakeTime, xFrequency/5UL );
 	for(;;)
 	{
-		xTaskDelayUntil( &xLastWakeTime, xFrequency );
+		
+		uint16_t ppm;
+		mh_z19_returnCode_t rc;
 
 		// Some dummy payload
-		uint16_t hum = 12345; // Dummy humidity
-		int16_t temp = 675; // Dummy temp
-		uint16_t co2_ppm = 1050; // Dummy CO2
+		uint16_t humidity = hih8120_getHumidityPercent_x10();
+		uint16_t temperature = hih8120_getTemperature_x10();
+		uint16_t light = 20; //DUMMY LIGHT
+		uint16_t co2 = 69;
+		
+		rc = mh_z19_takeMeassuring();
+	
+	
+		if(rc!= MHZ19_OK){
+			puts("Something went wrong with CO2 Measurement");
+		}
+	
+		
+		_uplink_payload.bytes[0] = humidity & 0xFF;
+		
+		_uplink_payload.bytes[1] = ppm >> 2;
+		
+		_uplink_payload.bytes[2] = temperature & 0xFF;
+		_uplink_payload.bytes[3] = light & 0xFF;
 
-		_uplink_payload.bytes[0] = hum >> 8;
-		_uplink_payload.bytes[1] = hum & 0xFF;
-		_uplink_payload.bytes[2] = temp >> 8;
-		_uplink_payload.bytes[3] = temp & 0xFF;
-		_uplink_payload.bytes[4] = co2_ppm >> 8;
-		_uplink_payload.bytes[5] = co2_ppm & 0xFF;
+		
+
 
 		status_leds_shortPuls(led_ST4);  // OPTIONAL
 		printf("Upload Message >%s<\n", lora_driver_mapReturnCodeToText(lora_driver_sendUploadMessage(false, &_uplink_payload)));
+		
+		xTaskDelayUntil( &xLastWakeTime, xFrequency );
 	}
+
 }
