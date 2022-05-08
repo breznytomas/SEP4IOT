@@ -177,7 +177,7 @@ void lora_handler_task( void *pvParameters )
 		
 		_uplink_payload.bytes[0] = humidity & 0xFF;
 		
-		_uplink_payload.bytes[1] = ppm >> 2;
+		_uplink_payload.bytes[1] = co2 & 0xFF;
 		
 		_uplink_payload.bytes[2] = temperature & 0xFF;
 		_uplink_payload.bytes[3] = light & 0xFF;
