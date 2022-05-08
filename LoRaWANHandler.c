@@ -25,7 +25,7 @@ static lora_driver_payload_t _uplink_payload;
 
 void myCo2CallBack(uint16_t ppm)
 {
-	return ppm;
+	
 }
 
 void lora_handler_initialise(UBaseType_t lora_handler_task_priority)
